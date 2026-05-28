@@ -12,5 +12,10 @@ export interface CheckinInput {
   /** ISO date string YYYY-MM-DD */
   date: string;
   status: CheckinInputStatus;
+  /**
+     * Manually chosen spot ID. Omit to let the server auto-assign via FIFO.
+     * @nullable
+     */
+  spotId?: number | null;
   notes?: string;
 }

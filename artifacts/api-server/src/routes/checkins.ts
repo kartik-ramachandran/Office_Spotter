@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, and } from "drizzle-orm";
+import { eq, and, notInArray } from "drizzle-orm";
 import { db, checkinsTable, employeesTable, parkingSpotsTable } from "@workspace/db";
 import {
   ListCheckinsQueryParams,
@@ -38,6 +38,83 @@ async function enrichCheckin(checkin: typeof checkinsTable.$inferSelect) {
   };
 }
 
+/**
+ * Find all spot IDs already assigned on a given date.
+ */
+async function getTakenSpotIds(date: string): Promise<number[]> {
+  const rows = await db
+    .select({ spotId: checkinsTable.spotId })
+    .from(checkinsTable)
+    .where(eq(checkinsTable.date, date));
+  return rows.map((r) => r.spotId).filter((id): id is number => id !== null);
+}
+
+/**
+ * FIFO auto-assign: pick the next available spot for an in-office employee.
+ *
+ * Priority order:
+ *  1. Employee's own permanent spot (if they have one).
+ *  2. Any flexible spot not yet taken today (sorted by label).
+ *  3. Any permanent spot whose owner is WFH/absent today and not yet reassigned (sorted by label).
+ *     This is the key FIFO behaviour: freed permanent spots join the pool for
+ *     whoever comes in next after the flex spots run out.
+ */
+async function autoAssignSpot(employeeId: number, date: string): Promise<number | null> {
+  const [emp] = await db
+    .select()
+    .from(employeesTable)
+    .where(eq(employeesTable.id, employeeId));
+
+  // 1. Own permanent spot
+  if (emp?.permanentSpotId) {
+    return emp.permanentSpotId;
+  }
+
+  const takenIds = await getTakenSpotIds(date);
+
+  // 2. Flex spots not taken today
+  const flexQuery = takenIds.length
+    ? db
+        .select()
+        .from(parkingSpotsTable)
+        .where(
+          and(
+            eq(parkingSpotsTable.type, "flexible"),
+            notInArray(parkingSpotsTable.id, takenIds)
+          )
+        )
+    : db.select().from(parkingSpotsTable).where(eq(parkingSpotsTable.type, "flexible"));
+
+  const flexSpots = await flexQuery;
+  flexSpots.sort((a, b) => a.label.localeCompare(b.label));
+  if (flexSpots.length > 0) return flexSpots[0].id;
+
+  // 3. Freed permanent spots: owner checked in as WFH today, spot not yet taken
+  const wfhRows = await db
+    .select({ empId: checkinsTable.employeeId })
+    .from(checkinsTable)
+    .where(and(eq(checkinsTable.date, date), eq(checkinsTable.status, "wfh")));
+  const wfhEmpIds = wfhRows.map((r) => r.empId);
+
+  if (wfhEmpIds.length === 0) return null;
+
+  const permSpots = await db
+    .select()
+    .from(parkingSpotsTable)
+    .where(eq(parkingSpotsTable.type, "permanent"));
+
+  const freedSpots = permSpots
+    .filter(
+      (s) =>
+        s.permanentEmployeeId !== null &&
+        wfhEmpIds.includes(s.permanentEmployeeId) &&
+        !takenIds.includes(s.id)
+    )
+    .sort((a, b) => a.label.localeCompare(b.label));
+
+  return freedSpots.length > 0 ? freedSpots[0].id : null;
+}
+
 router.get("/checkins", async (req, res): Promise<void> => {
   const query = ListCheckinsQueryParams.safeParse(req.query);
   if (!query.success) {
@@ -45,19 +122,15 @@ router.get("/checkins", async (req, res): Promise<void> => {
     return;
   }
 
-  let rows;
-  if (query.data.date) {
-    rows = await db
-      .select()
-      .from(checkinsTable)
-      .where(eq(checkinsTable.date, query.data.date))
-      .orderBy(checkinsTable.createdAt);
-  } else {
-    rows = await db.select().from(checkinsTable).orderBy(checkinsTable.createdAt);
-  }
+  const rows = query.data.date
+    ? await db
+        .select()
+        .from(checkinsTable)
+        .where(eq(checkinsTable.date, query.data.date))
+        .orderBy(checkinsTable.createdAt)
+    : await db.select().from(checkinsTable).orderBy(checkinsTable.createdAt);
 
-  const enriched = await Promise.all(rows.map(enrichCheckin));
-  res.json(enriched);
+  res.json(await Promise.all(rows.map(enrichCheckin)));
 });
 
 router.post("/checkins", async (req, res): Promise<void> => {
@@ -67,7 +140,7 @@ router.post("/checkins", async (req, res): Promise<void> => {
     return;
   }
 
-  // Check for existing checkin by same employee on same date
+  // Duplicate check
   const [existing] = await db
     .select()
     .from(checkinsTable)
@@ -85,34 +158,12 @@ router.post("/checkins", async (req, res): Promise<void> => {
   let spotId: number | null = null;
 
   if (parsed.data.status === "in_office") {
-    // Check if employee has a permanent spot
-    const [emp] = await db
-      .select()
-      .from(employeesTable)
-      .where(eq(employeesTable.id, parsed.data.employeeId));
-
-    if (emp?.permanentSpotId) {
-      spotId = emp.permanentSpotId;
+    if (parsed.data.spotId != null) {
+      // Manual selection: honour it directly
+      spotId = parsed.data.spotId;
     } else {
-      // Find an available flexible spot not already taken today
-      const takenSpotIds = await db
-        .select({ spotId: checkinsTable.spotId })
-        .from(checkinsTable)
-        .where(and(eq(checkinsTable.date, parsed.data.date)));
-
-      const takenIds = takenSpotIds
-        .map((r) => r.spotId)
-        .filter((id): id is number => id !== null);
-
-      const flexSpots = await db
-        .select()
-        .from(parkingSpotsTable)
-        .where(eq(parkingSpotsTable.type, "flexible"));
-
-      const available = flexSpots.find((s) => !takenIds.includes(s.id));
-      if (available) {
-        spotId = available.id;
-      }
+      // Auto FIFO assignment
+      spotId = await autoAssignSpot(parsed.data.employeeId, parsed.data.date);
     }
   }
 

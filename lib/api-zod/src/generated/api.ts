@@ -188,6 +188,7 @@ export const CreateCheckinBody = zod.object({
   "employeeId": zod.number(),
   "date": zod.string().describe('ISO date string YYYY-MM-DD'),
   "status": zod.enum(['in_office', 'wfh']),
+  "spotId": zod.number().nullish().describe('Manually chosen spot ID. Omit to let the server auto-assign via FIFO.'),
   "notes": zod.string().optional()
 })
 

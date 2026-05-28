@@ -418,6 +418,9 @@ components:
         status:
           type: string
           enum: [in_office, wfh]
+        spotId:
+          type: ["integer", "null"]
+          description: Manually chosen spot ID. Omit to let the server auto-assign via FIFO.
         notes:
           type: string
 

@@ -9,6 +9,8 @@ import {
   useCreateCheckin,
   useDeleteCheckin,
   useUpdateCheckin,
+  type DashboardSummary,
+  type ParkingSpot,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -42,8 +44,8 @@ import {
   Sparkles,
 } from "lucide-react";
 
-type Checkin = NonNullable<ReturnType<typeof useGetDashboard>["data"]>["checkins"][number];
-type Spot = NonNullable<ReturnType<typeof useListSpots>["data"]>[number];
+type Checkin = DashboardSummary["checkins"][number];
+type Spot = ParkingSpot;
 
 function SpotCard({
   spot,
@@ -127,6 +129,7 @@ export default function Dashboard() {
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
   const [selectedStatus, setSelectedStatus] = useState<"in_office" | "wfh">("in_office");
+  const [selectedSpotId, setSelectedSpotId] = useState<string>("auto");
 
   const [reassignCheckin, setReassignCheckin] = useState<Checkin | null>(null);
   const [reassignSpotId, setReassignSpotId] = useState<string>("");
@@ -142,6 +145,7 @@ export default function Dashboard() {
         invalidate();
         setCheckinOpen(false);
         setSelectedEmployee("");
+        setSelectedSpotId("auto");
         toast({ title: "Checked in successfully" });
       },
       onError: (err: unknown) => {
@@ -202,10 +206,22 @@ export default function Dashboard() {
       !occupiedSpotIds.has(s.id)
   );
 
+  // Spots not yet occupied today — available for manual check-in selection
+  const availableSpotsForCheckin = (allSpots ?? [])
+    .filter((s) => !occupiedSpotIds.has(s.id))
+    .sort((a, b) => a.label.localeCompare(b.label));
+
   const handleCheckin = () => {
     if (!selectedEmployee) return;
     createCheckin.mutate({
-      data: { employeeId: Number(selectedEmployee), date: today, status: selectedStatus },
+      data: {
+        employeeId: Number(selectedEmployee),
+        date: today,
+        status: selectedStatus,
+        ...(selectedStatus === "in_office" && selectedSpotId !== "auto"
+          ? { spotId: Number(selectedSpotId) }
+          : {}),
+      },
     });
   };
 
@@ -284,7 +300,13 @@ export default function Dashboard() {
               </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Status</label>
-                <Select value={selectedStatus} onValueChange={(v) => setSelectedStatus(v as "in_office" | "wfh")}>
+                <Select
+                  value={selectedStatus}
+                  onValueChange={(v) => {
+                    setSelectedStatus(v as "in_office" | "wfh");
+                    setSelectedSpotId("auto");
+                  }}
+                >
                   <SelectTrigger data-testid="select-status">
                     <SelectValue />
                   </SelectTrigger>
@@ -294,6 +316,38 @@ export default function Dashboard() {
                   </SelectContent>
                 </Select>
               </div>
+
+              {selectedStatus === "in_office" && (
+                <div className="space-y-2">
+                  <label className="text-sm font-medium">Parking Spot</label>
+                  <Select value={selectedSpotId} onValueChange={setSelectedSpotId}>
+                    <SelectTrigger data-testid="select-spot">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="auto">
+                        Auto-assign (FIFO)
+                      </SelectItem>
+                      {availableSpotsForCheckin.map((s) => (
+                        <SelectItem key={s.id} value={String(s.id)}>
+                          {s.label}
+                          {s.type === "permanent" ? " — Permanent" : " — Flex"}
+                          {s.permanentEmployeeName ? ` (${s.permanentEmployeeName} WFH)` : ""}
+                        </SelectItem>
+                      ))}
+                      {availableSpotsForCheckin.length === 0 && (
+                        <SelectItem value="none" disabled>No spots available</SelectItem>
+                      )}
+                    </SelectContent>
+                  </Select>
+                  {selectedSpotId === "auto" && (
+                    <p className="text-xs text-muted-foreground">
+                      Flex spots fill first; freed permanent spots join the pool when all flex spots are taken.
+                    </p>
+                  )}
+                </div>
+              )}
+
               <Button
                 className="w-full"
                 onClick={handleCheckin}
