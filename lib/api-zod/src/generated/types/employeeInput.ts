@@ -11,5 +11,6 @@ export interface EmployeeInput {
   name: string;
   /** @minLength 1 */
   email: string;
+  phone?: string;
   department?: string;
 }

@@ -24,6 +24,7 @@ async function enrichEmployee(emp: typeof employeesTable.$inferSelect) {
     id: emp.id,
     name: emp.name,
     email: emp.email,
+    phone: emp.phone ?? null,
     department: emp.department ?? null,
     permanentSpotId: emp.permanentSpotId ?? null,
     permanentSpotLabel,

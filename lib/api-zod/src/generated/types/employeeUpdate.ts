@@ -11,6 +11,8 @@ export interface EmployeeUpdate {
   name?: string;
   email?: string;
   /** @nullable */
+  phone?: string | null;
+  /** @nullable */
   department?: string | null;
   /** @nullable */
   permanentSpotId?: number | null;

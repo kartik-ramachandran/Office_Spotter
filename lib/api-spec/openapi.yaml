@@ -299,6 +299,8 @@ components:
           type: string
         email:
           type: string
+        phone:
+          type: ["string", "null"]
         department:
           type: ["string", "null"]
         permanentSpotId:
@@ -316,6 +318,8 @@ components:
         email:
           type: string
           minLength: 1
+        phone:
+          type: string
         department:
           type: string
 
@@ -327,6 +331,8 @@ components:
           minLength: 1
         email:
           type: string
+        phone:
+          type: ["string", "null"]
         department:
           type: ["string", "null"]
         permanentSpotId:

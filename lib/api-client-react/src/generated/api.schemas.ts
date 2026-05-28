@@ -14,6 +14,8 @@ export interface Employee {
   name: string;
   email: string;
   /** @nullable */
+  phone?: string | null;
+  /** @nullable */
   department?: string | null;
   /** @nullable */
   permanentSpotId?: number | null;
@@ -26,6 +28,7 @@ export interface EmployeeInput {
   name: string;
   /** @minLength 1 */
   email: string;
+  phone?: string;
   department?: string;
 }
 
@@ -33,6 +36,8 @@ export interface EmployeeUpdate {
   /** @minLength 1 */
   name?: string;
   email?: string;
+  /** @nullable */
+  phone?: string | null;
   /** @nullable */
   department?: string | null;
   /** @nullable */

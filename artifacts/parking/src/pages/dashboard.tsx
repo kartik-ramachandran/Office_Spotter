@@ -4,9 +4,11 @@ import {
   useGetDashboard,
   getGetDashboardQueryKey,
   useListEmployees,
+  useListSpots,
   getListCheckinsQueryKey,
   useCreateCheckin,
   useDeleteCheckin,
+  useUpdateCheckin,
 } from "@workspace/api-client-react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -27,7 +29,9 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { Car, Users, Home, ParkingSquare, Plus, Trash2 } from "lucide-react";
+import { Car, Users, Home, ParkingSquare, Plus, Trash2, ArrowRightLeft } from "lucide-react";
+
+type Checkin = NonNullable<ReturnType<typeof useGetDashboard>["data"]>["checkins"][number];
 
 export default function Dashboard() {
   const { toast } = useToast();
@@ -36,16 +40,26 @@ export default function Dashboard() {
 
   const { data: dashboard, isLoading } = useGetDashboard();
   const { data: employees } = useListEmployees();
+  const { data: allSpots } = useListSpots();
 
+  // Check-in modal state
   const [checkinOpen, setCheckinOpen] = useState(false);
   const [selectedEmployee, setSelectedEmployee] = useState<string>("");
   const [selectedStatus, setSelectedStatus] = useState<"in_office" | "wfh">("in_office");
 
+  // Reassign spot modal state
+  const [reassignCheckin, setReassignCheckin] = useState<Checkin | null>(null);
+  const [reassignSpotId, setReassignSpotId] = useState<string>("");
+
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
+    queryClient.invalidateQueries({ queryKey: getListCheckinsQueryKey() });
+  };
+
   const createCheckin = useCreateCheckin({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListCheckinsQueryKey() });
+        invalidate();
         setCheckinOpen(false);
         setSelectedEmployee("");
         toast({ title: "Checked in successfully" });
@@ -62,12 +76,60 @@ export default function Dashboard() {
   const deleteCheckin = useDeleteCheckin({
     mutation: {
       onSuccess: () => {
-        queryClient.invalidateQueries({ queryKey: getGetDashboardQueryKey() });
-        queryClient.invalidateQueries({ queryKey: getListCheckinsQueryKey() });
+        invalidate();
         toast({ title: "Check-in removed" });
       },
     },
   });
+
+  const updateCheckin = useUpdateCheckin({
+    mutation: {
+      onSuccess: () => {
+        invalidate();
+        setReassignCheckin(null);
+        setReassignSpotId("");
+        toast({ title: "Spot reassigned" });
+      },
+      onError: () =>
+        toast({ title: "Error", description: "Failed to reassign spot", variant: "destructive" }),
+    },
+  });
+
+  const checkedInIds = new Set(dashboard?.checkins.map((c) => c.employeeId) ?? []);
+  const availableEmployees = employees?.filter((e) => !checkedInIds.has(e.id)) ?? [];
+
+  // Spot IDs currently occupied today
+  const occupiedSpotIds = new Set(
+    (dashboard?.checkins ?? [])
+      .filter((c) => c.status === "in_office" && c.spotId !== null && c.spotId !== undefined)
+      .map((c) => c.spotId as number)
+  );
+
+  // All spots not occupied today — available for assignment/reassignment
+  // Include a note if the spot is a permanent spot whose owner is currently WFH
+  const wfhCheckins = dashboard?.checkins.filter((c) => c.status === "wfh") ?? [];
+  const wfhEmployeeIds = new Set(wfhCheckins.map((c) => c.employeeId));
+
+  const availableSpotsForReassign = (allSpots ?? []).filter(
+    (s) => !occupiedSpotIds.has(s.id) || s.id === reassignCheckin?.spotId
+  );
+
+  function spotLabel(s: (typeof availableSpotsForReassign)[number]) {
+    const isOwnerWfh =
+      s.type === "permanent" &&
+      s.permanentEmployeeId !== null &&
+      s.permanentEmployeeId !== undefined &&
+      wfhEmployeeIds.has(s.permanentEmployeeId);
+
+    const currentlyAssigned = s.id === reassignCheckin?.spotId;
+
+    if (currentlyAssigned) return `${s.label}${s.zone ? ` (${s.zone})` : ""} — current`;
+    if (isOwnerWfh)
+      return `${s.label}${s.zone ? ` (${s.zone})` : ""} — ${s.permanentEmployeeName} is WFH`;
+    if (s.type === "permanent" && s.permanentEmployeeName)
+      return `${s.label}${s.zone ? ` (${s.zone})` : ""} — ${s.permanentEmployeeName}`;
+    return `${s.label}${s.zone ? ` (${s.zone})` : ""}`;
+  }
 
   const handleCheckin = () => {
     if (!selectedEmployee) return;
@@ -76,8 +138,13 @@ export default function Dashboard() {
     });
   };
 
-  const checkedInIds = new Set(dashboard?.checkins.map((c) => c.employeeId) ?? []);
-  const availableEmployees = employees?.filter((e) => !checkedInIds.has(e.id)) ?? [];
+  const handleReassign = () => {
+    if (!reassignCheckin) return;
+    updateCheckin.mutate({
+      id: reassignCheckin.id,
+      data: { spotId: reassignSpotId ? Number(reassignSpotId) : null },
+    });
+  };
 
   if (isLoading) {
     return (
@@ -95,6 +162,16 @@ export default function Dashboard() {
 
   const inOffice = dashboard?.checkins.filter((c) => c.status === "in_office") ?? [];
   const wfh = dashboard?.checkins.filter((c) => c.status === "wfh") ?? [];
+
+  // Permanent spots freed up by absent/WFH owners
+  const freedSpots = (allSpots ?? []).filter(
+    (s) =>
+      s.type === "permanent" &&
+      s.permanentEmployeeId !== null &&
+      s.permanentEmployeeId !== undefined &&
+      wfhEmployeeIds.has(s.permanentEmployeeId) &&
+      !occupiedSpotIds.has(s.id)
+  );
 
   return (
     <div className="space-y-8">
@@ -130,7 +207,11 @@ export default function Dashboard() {
                   </SelectTrigger>
                   <SelectContent>
                     {availableEmployees.map((e) => (
-                      <SelectItem key={e.id} value={String(e.id)} data-testid={`option-employee-${e.id}`}>
+                      <SelectItem
+                        key={e.id}
+                        value={String(e.id)}
+                        data-testid={`option-employee-${e.id}`}
+                      >
                         {e.name}
                         {e.department ? ` — ${e.department}` : ""}
                       </SelectItem>
@@ -170,6 +251,27 @@ export default function Dashboard() {
           </DialogContent>
         </Dialog>
       </div>
+
+      {/* Freed permanent spots banner */}
+      {freedSpots.length > 0 && (
+        <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 flex items-start gap-3">
+          <ArrowRightLeft className="h-4 w-4 text-amber-600 mt-0.5 shrink-0" />
+          <div className="text-sm text-amber-800">
+            <span className="font-medium">
+              {freedSpots.length} permanent spot{freedSpots.length > 1 ? "s" : ""} available today
+            </span>{" "}
+            —{" "}
+            {freedSpots
+              .map(
+                (s) =>
+                  `Spot ${s.label} (${s.permanentEmployeeName} is WFH)`
+              )
+              .join(", ")}
+            . You can reassign {freedSpots.length > 1 ? "them" : "it"} to someone else using the
+            reassign button below.
+          </div>
+        </div>
+      )}
 
       {/* Stats row */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -227,6 +329,66 @@ export default function Dashboard() {
         </Card>
       </div>
 
+      {/* Reassign spot dialog */}
+      <Dialog
+        open={!!reassignCheckin}
+        onOpenChange={(o) => {
+          if (!o) {
+            setReassignCheckin(null);
+            setReassignSpotId("");
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reassign Spot — {reassignCheckin?.employeeName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 pt-2">
+            <p className="text-sm text-muted-foreground">
+              {reassignCheckin?.spotLabel
+                ? `Currently on spot ${reassignCheckin.spotLabel}. Pick a different spot or clear the assignment.`
+                : "No spot assigned. Pick an available spot."}
+            </p>
+            <div className="space-y-2">
+              <label className="text-sm font-medium">Spot</label>
+              <Select
+                value={reassignSpotId || "none"}
+                onValueChange={(v) => setReassignSpotId(v === "none" ? "" : v)}
+              >
+                <SelectTrigger data-testid="select-reassign-spot">
+                  <SelectValue placeholder="No spot" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">No spot (clear assignment)</SelectItem>
+                  {availableSpotsForReassign.map((s) => (
+                    <SelectItem
+                      key={s.id}
+                      value={String(s.id)}
+                      data-testid={`option-spot-${s.id}`}
+                    >
+                      {spotLabel(s)}
+                    </SelectItem>
+                  ))}
+                  {availableSpotsForReassign.length === 0 && (
+                    <SelectItem value="full" disabled>
+                      No spots available
+                    </SelectItem>
+                  )}
+                </SelectContent>
+              </Select>
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleReassign}
+              disabled={updateCheckin.isPending}
+              data-testid="button-confirm-reassign"
+            >
+              {updateCheckin.isPending ? "Saving..." : "Confirm Reassignment"}
+            </Button>
+          </div>
+        </DialogContent>
+      </Dialog>
+
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* In Office */}
         <Card>
@@ -238,7 +400,9 @@ export default function Dashboard() {
           </CardHeader>
           <CardContent>
             {inOffice.length === 0 ? (
-              <p className="text-sm text-muted-foreground py-4 text-center">No one in office today</p>
+              <p className="text-sm text-muted-foreground py-4 text-center">
+                No one in office today
+              </p>
             ) : (
               <div className="space-y-2">
                 {inOffice.map((c) => (
@@ -249,20 +413,33 @@ export default function Dashboard() {
                   >
                     <div>
                       <p className="text-sm font-medium">{c.employeeName}</p>
-                      {c.spotLabel && (
-                        <p className="text-xs text-muted-foreground">Spot {c.spotLabel}</p>
-                      )}
+                      <p className="text-xs text-muted-foreground">
+                        {c.spotLabel ? `Spot ${c.spotLabel}` : "No spot assigned"}
+                      </p>
                     </div>
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center gap-1.5">
                       {c.spotLabel ? (
                         <Badge variant="outline" className="text-xs">
                           {c.spotLabel}
                         </Badge>
                       ) : (
-                        <Badge variant="secondary" className="text-xs">No spot</Badge>
+                        <Badge variant="secondary" className="text-xs">
+                          No spot
+                        </Badge>
                       )}
                       <button
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-primary transition-opacity p-1"
+                        onClick={() => {
+                          setReassignCheckin(c);
+                          setReassignSpotId(c.spotId ? String(c.spotId) : "");
+                        }}
+                        title="Reassign spot"
+                        data-testid={`button-reassign-${c.id}`}
+                      >
+                        <ArrowRightLeft className="h-3.5 w-3.5" />
+                      </button>
+                      <button
+                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity p-1"
                         onClick={() => deleteCheckin.mutate({ id: c.id })}
                         data-testid={`button-remove-checkin-${c.id}`}
                       >
@@ -289,25 +466,49 @@ export default function Dashboard() {
               <p className="text-sm text-muted-foreground py-4 text-center">No WFH today</p>
             ) : (
               <div className="space-y-2">
-                {wfh.map((c) => (
-                  <div
-                    key={c.id}
-                    className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/40 group"
-                    data-testid={`row-wfh-${c.id}`}
-                  >
-                    <p className="text-sm font-medium">{c.employeeName}</p>
-                    <div className="flex items-center gap-2">
-                      <Badge variant="secondary" className="text-xs">WFH</Badge>
-                      <button
-                        className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity"
-                        onClick={() => deleteCheckin.mutate({ id: c.id })}
-                        data-testid={`button-remove-wfh-${c.id}`}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" />
-                      </button>
+                {wfh.map((c) => {
+                  const emp = employees?.find((e) => e.id === c.employeeId);
+                  const freedSpot = emp?.permanentSpotId
+                    ? allSpots?.find((s) => s.id === emp.permanentSpotId)
+                    : null;
+                  return (
+                    <div
+                      key={c.id}
+                      className="flex items-center justify-between py-2 px-3 rounded-lg bg-muted/40 group"
+                      data-testid={`row-wfh-${c.id}`}
+                    >
+                      <div>
+                        <p className="text-sm font-medium">{c.employeeName}</p>
+                        {freedSpot && !occupiedSpotIds.has(freedSpot.id) && (
+                          <p className="text-xs text-amber-600">
+                            Spot {freedSpot.label} is free today
+                          </p>
+                        )}
+                      </div>
+                      <div className="flex items-center gap-2">
+                        {freedSpot && !occupiedSpotIds.has(freedSpot.id) ? (
+                          <Badge
+                            variant="outline"
+                            className="text-xs border-amber-300 text-amber-700 bg-amber-50"
+                          >
+                            {freedSpot.label} free
+                          </Badge>
+                        ) : (
+                          <Badge variant="secondary" className="text-xs">
+                            WFH
+                          </Badge>
+                        )}
+                        <button
+                          className="opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive transition-opacity p-1"
+                          onClick={() => deleteCheckin.mutate({ id: c.id })}
+                          data-testid={`button-remove-wfh-${c.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" />
+                        </button>
+                      </div>
                     </div>
-                  </div>
-                ))}
+                  );
+                })}
               </div>
             )}
           </CardContent>

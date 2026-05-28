@@ -23,6 +23,7 @@ export const ListEmployeesResponseItem = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "email": zod.string(),
+  "phone": zod.string().nullish(),
   "department": zod.string().nullish(),
   "permanentSpotId": zod.number().nullish(),
   "permanentSpotLabel": zod.string().nullish()
@@ -40,6 +41,7 @@ export const ListEmployeesResponse = zod.array(ListEmployeesResponseItem)
 export const CreateEmployeeBody = zod.object({
   "name": zod.string().min(1),
   "email": zod.string().min(1),
+  "phone": zod.string().optional(),
   "department": zod.string().optional()
 })
 
@@ -55,6 +57,7 @@ export const GetEmployeeResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "email": zod.string(),
+  "phone": zod.string().nullish(),
   "department": zod.string().nullish(),
   "permanentSpotId": zod.number().nullish(),
   "permanentSpotLabel": zod.string().nullish()
@@ -74,6 +77,7 @@ export const UpdateEmployeeParams = zod.object({
 export const UpdateEmployeeBody = zod.object({
   "name": zod.string().min(1).optional(),
   "email": zod.string().optional(),
+  "phone": zod.string().nullish(),
   "department": zod.string().nullish(),
   "permanentSpotId": zod.number().nullish()
 })
@@ -82,6 +86,7 @@ export const UpdateEmployeeResponse = zod.object({
   "id": zod.number(),
   "name": zod.string(),
   "email": zod.string(),
+  "phone": zod.string().nullish(),
   "department": zod.string().nullish(),
   "permanentSpotId": zod.number().nullish(),
   "permanentSpotLabel": zod.string().nullish()
