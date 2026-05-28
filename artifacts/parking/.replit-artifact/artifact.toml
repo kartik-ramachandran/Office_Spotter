@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Office Parking Manager"
+version = "1.0.0"
+id = "artifacts/parking"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 25738
+
+[services.development]
+run = "pnpm --filter @workspace/parking run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/parking", "run", "build" ]
+publicDir = "artifacts/parking/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "25738"
+BASE_PATH = "/"

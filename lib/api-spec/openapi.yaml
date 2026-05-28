@@ -1,22 +1,28 @@
 openapi: 3.1.0
 info:
-  # Do not change the title, if the title changes, the import paths will be broken
   title: Api
   version: 0.1.0
-  description: API specification
+  description: Office Parking Space Manager API
 servers:
   - url: /api
     description: Base API path
 tags:
   - name: health
     description: Health operations
+  - name: employees
+    description: Employee management
+  - name: spots
+    description: Parking spot management
+  - name: checkins
+    description: Daily check-in management
+  - name: dashboard
+    description: Dashboard & summary data
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -24,13 +30,423 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /employees:
+    get:
+      operationId: listEmployees
+      tags: [employees]
+      summary: List all employees
+      responses:
+        "200":
+          description: List of employees
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Employee"
+    post:
+      operationId: createEmployee
+      tags: [employees]
+      summary: Create an employee
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+
+  /employees/{id}:
+    get:
+      operationId: getEmployee
+      tags: [employees]
+      summary: Get an employee
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Employee
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+        "404":
+          description: Not found
+    patch:
+      operationId: updateEmployee
+      tags: [employees]
+      summary: Update an employee
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/EmployeeUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Employee"
+    delete:
+      operationId: deleteEmployee
+      tags: [employees]
+      summary: Delete an employee
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /spots:
+    get:
+      operationId: listSpots
+      tags: [spots]
+      summary: List all parking spots
+      responses:
+        "200":
+          description: List of spots
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/ParkingSpot"
+    post:
+      operationId: createSpot
+      tags: [spots]
+      summary: Create a parking spot
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpotInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParkingSpot"
+
+  /spots/{id}:
+    patch:
+      operationId: updateSpot
+      tags: [spots]
+      summary: Update a parking spot (e.g. assign permanent employee)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/SpotUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ParkingSpot"
+    delete:
+      operationId: deleteSpot
+      tags: [spots]
+      summary: Delete a parking spot
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /checkins:
+    get:
+      operationId: listCheckins
+      tags: [checkins]
+      summary: List check-ins (optionally filtered by date)
+      parameters:
+        - name: date
+          in: query
+          required: false
+          schema:
+            type: string
+            description: ISO date string YYYY-MM-DD
+      responses:
+        "200":
+          description: List of check-ins
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Checkin"
+    post:
+      operationId: createCheckin
+      tags: [checkins]
+      summary: Check in for today (in office or WFH)
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckinInput"
+      responses:
+        "201":
+          description: Created
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkin"
+
+  /checkins/{id}:
+    patch:
+      operationId: updateCheckin
+      tags: [checkins]
+      summary: Update a check-in (e.g. change status or release spot)
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CheckinUpdate"
+      responses:
+        "200":
+          description: Updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Checkin"
+    delete:
+      operationId: deleteCheckin
+      tags: [checkins]
+      summary: Delete a check-in
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+
+  /dashboard:
+    get:
+      operationId: getDashboard
+      tags: [dashboard]
+      summary: Today's parking summary
+      responses:
+        "200":
+          description: Dashboard summary
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardSummary"
+
 components:
   schemas:
     HealthStatus:
       type: object
+      required: [status]
       properties:
         status:
           type: string
-      required:
-        - status
 
+    Employee:
+      type: object
+      required: [id, name, email]
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        email:
+          type: string
+        department:
+          type: ["string", "null"]
+        permanentSpotId:
+          type: ["integer", "null"]
+        permanentSpotLabel:
+          type: ["string", "null"]
+
+    EmployeeInput:
+      type: object
+      required: [name, email]
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+          minLength: 1
+        department:
+          type: string
+
+    EmployeeUpdate:
+      type: object
+      properties:
+        name:
+          type: string
+          minLength: 1
+        email:
+          type: string
+        department:
+          type: ["string", "null"]
+        permanentSpotId:
+          type: ["integer", "null"]
+
+    ParkingSpot:
+      type: object
+      required: [id, label, type]
+      properties:
+        id:
+          type: integer
+        label:
+          type: string
+        type:
+          type: string
+          enum: [permanent, flexible]
+        zone:
+          type: ["string", "null"]
+        permanentEmployeeId:
+          type: ["integer", "null"]
+        permanentEmployeeName:
+          type: ["string", "null"]
+
+    SpotInput:
+      type: object
+      required: [label, type]
+      properties:
+        label:
+          type: string
+          minLength: 1
+        type:
+          type: string
+          enum: [permanent, flexible]
+        zone:
+          type: string
+        permanentEmployeeId:
+          type: ["integer", "null"]
+
+    SpotUpdate:
+      type: object
+      properties:
+        label:
+          type: string
+        type:
+          type: string
+          enum: [permanent, flexible]
+        zone:
+          type: ["string", "null"]
+        permanentEmployeeId:
+          type: ["integer", "null"]
+
+    Checkin:
+      type: object
+      required: [id, employeeId, employeeName, date, status]
+      properties:
+        id:
+          type: integer
+        employeeId:
+          type: integer
+        employeeName:
+          type: string
+        date:
+          type: string
+        status:
+          type: string
+          enum: [in_office, wfh]
+        spotId:
+          type: ["integer", "null"]
+        spotLabel:
+          type: ["string", "null"]
+        notes:
+          type: ["string", "null"]
+
+    CheckinInput:
+      type: object
+      required: [employeeId, date, status]
+      properties:
+        employeeId:
+          type: integer
+        date:
+          type: string
+          description: ISO date string YYYY-MM-DD
+        status:
+          type: string
+          enum: [in_office, wfh]
+        notes:
+          type: string
+
+    CheckinUpdate:
+      type: object
+      properties:
+        status:
+          type: string
+          enum: [in_office, wfh]
+        spotId:
+          type: ["integer", "null"]
+        notes:
+          type: ["string", "null"]
+
+    DashboardSummary:
+      type: object
+      required: [date, totalSpots, spotsAvailable, spotsOccupied, permanentSpots, flexibleSpots, inOfficeCount, wfhCount, checkins]
+      properties:
+        date:
+          type: string
+        totalSpots:
+          type: integer
+        spotsAvailable:
+          type: integer
+        spotsOccupied:
+          type: integer
+        permanentSpots:
+          type: integer
+        flexibleSpots:
+          type: integer
+        inOfficeCount:
+          type: integer
+        wfhCount:
+          type: integer
+        checkins:
+          type: array
+          items:
+            $ref: "#/components/schemas/Checkin"
