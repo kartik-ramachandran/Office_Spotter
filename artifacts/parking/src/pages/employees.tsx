@@ -40,7 +40,7 @@ import {
 import { useToast } from "@/hooks/use-toast";
 import { Plus, Pencil, Trash2, Users } from "lucide-react";
 
-type EmployeeForm = { name: string; email: string; department: string };
+type EmployeeForm = { name: string; email: string; phone: string; department: string };
 
 export default function Employees() {
   const { toast } = useToast();
@@ -52,14 +52,14 @@ export default function Employees() {
   const [createOpen, setCreateOpen] = useState(false);
   const [editEmployee, setEditEmployee] = useState<{ id: number } & EmployeeForm & { permanentSpotId: string } | null>(null);
   const [deleteId, setDeleteId] = useState<number | null>(null);
-  const [form, setForm] = useState<EmployeeForm>({ name: "", email: "", department: "" });
+  const [form, setForm] = useState<EmployeeForm>({ name: "", email: "", phone: "", department: "" });
 
   const createEmployee = useCreateEmployee({
     mutation: {
       onSuccess: () => {
         queryClient.invalidateQueries({ queryKey: getListEmployeesQueryKey() });
         setCreateOpen(false);
-        setForm({ name: "", email: "", department: "" });
+        setForm({ name: "", email: "", phone: "", department: "" });
         toast({ title: "Employee added" });
       },
       onError: () => toast({ title: "Error", description: "Failed to add employee", variant: "destructive" }),
@@ -141,6 +141,16 @@ export default function Employees() {
                 />
               </div>
               <div className="space-y-2">
+                <label className="text-sm font-medium">Phone (optional)</label>
+                <Input
+                  value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  placeholder="+1 555 000 0000"
+                  type="tel"
+                  data-testid="input-employee-phone"
+                />
+              </div>
+              <div className="space-y-2">
                 <label className="text-sm font-medium">Department (optional)</label>
                 <Input
                   value={form.department}
@@ -156,6 +166,7 @@ export default function Employees() {
                     data: {
                       name: form.name,
                       email: form.email,
+                      ...(form.phone ? { phone: form.phone } : {}),
                       ...(form.department ? { department: form.department } : {}),
                     },
                   })
@@ -192,6 +203,16 @@ export default function Employees() {
                   value={editEmployee.email}
                   onChange={(e) => setEditEmployee((f) => f && { ...f, email: e.target.value })}
                   data-testid="input-edit-email"
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Phone (optional)</label>
+                <Input
+                  value={editEmployee.phone}
+                  onChange={(e) => setEditEmployee((f) => f && { ...f, phone: e.target.value })}
+                  placeholder="+1 555 000 0000"
+                  type="tel"
+                  data-testid="input-edit-phone"
                 />
               </div>
               <div className="space-y-2">
@@ -235,6 +256,7 @@ export default function Employees() {
                     data: {
                       name: editEmployee.name,
                       email: editEmployee.email,
+                      phone: editEmployee.phone || null,
                       department: editEmployee.department || null,
                       permanentSpotId: editEmployee.permanentSpotId
                         ? Number(editEmployee.permanentSpotId)
@@ -292,6 +314,9 @@ export default function Employees() {
                   <div>
                     <p className="font-medium text-sm">{emp.name}</p>
                     <p className="text-xs text-muted-foreground">{emp.email}</p>
+                    {emp.phone && (
+                      <p className="text-xs text-muted-foreground">{emp.phone}</p>
+                    )}
                   </div>
                 </div>
                 <div className="flex items-center gap-3">
@@ -311,6 +336,7 @@ export default function Employees() {
                         id: emp.id,
                         name: emp.name,
                         email: emp.email,
+                        phone: emp.phone ?? "",
                         department: emp.department ?? "",
                         permanentSpotId: emp.permanentSpotId ? String(emp.permanentSpotId) : "",
                       })
