@@ -8,6 +8,7 @@ import Dashboard from "@/pages/dashboard";
 import Employees from "@/pages/employees";
 import Spots from "@/pages/spots";
 import Checkins from "@/pages/checkins";
+import ImportPage from "@/pages/import";
 
 const queryClient = new QueryClient();
 
@@ -19,6 +20,7 @@ function Router() {
         <Route path="/employees" component={Employees} />
         <Route path="/spots" component={Spots} />
         <Route path="/checkins" component={Checkins} />
+        <Route path="/import" component={ImportPage} />
         <Route component={NotFound} />
       </Switch>
     </Layout>

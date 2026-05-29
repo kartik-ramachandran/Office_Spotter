@@ -1,0 +1,18 @@
+**/.git
+**/node_modules
+**/.local
+**/.agents
+**/.replit
+**/.replitignore
+attached_assets
+
+# Build outputs (rebuilt inside Docker)
+**/dist
+artifacts/parking/dist
+
+# Dev/local files
+**/.env
+**/office-spotter.db
+
+# Docs/scripts not needed in image
+replit.md
